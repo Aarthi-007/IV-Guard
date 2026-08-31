@@ -49,7 +49,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-background overflow-hidden font-sans select-none text-slate-900">
+    <div className="flex h-screen w-screen bg-[#F8FAFC] overflow-hidden font-sans select-none text-slate-900">
       {/* Left Sidebar */}
       <Sidebar
         currentPage={currentPage}
@@ -59,7 +59,7 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Workspace */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#F8FAFC]">
         {/* Top Header */}
         <TopHeader
           currentPageTitle={pageTitles[currentPage]}
@@ -73,7 +73,7 @@ export const App: React.FC = () => {
         />
 
         {/* Dynamic Page Body */}
-        <main className="flex-1 overflow-y-auto bg-slate-50/50">
+        <main className="flex-1 overflow-y-auto bg-[#F8FAFC]">
           {/* Offline Banner if backend disconnected */}
           {!isBackendOnline && !isDemoMode && (
             <div className="bg-red-50 border-b border-red-200 px-8 py-3 text-red-800 text-xs flex items-center justify-between">
@@ -108,6 +108,7 @@ export const App: React.FC = () => {
               chartHistory={chartHistory}
               alerts={alerts}
               isLive={isLive}
+              isBackendOnline={isBackendOnline}
               isDemoMode={isDemoMode}
               demoStatus={demoStatus}
               onToggleDemo={handleToggleDemo}

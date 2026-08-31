@@ -79,7 +79,15 @@ async def update_config(config_req: UpdateConfigRequest, service=Depends(get_mon
         service.inference.tracker.conf_threshold = config_req.conf_threshold
         updated["conf_threshold"] = config_req.conf_threshold
 
-    if config_req.stream_url is not None and config_req.stream_url != service.camera.stream_url:
+    if config_req.camera_source is not None:
+        source = config_req.camera_source.strip().lower()
+        idx = config_req.camera_index if config_req.camera_index is not None else 0
+        url = config_req.stream_url if config_req.stream_url is not None else ""
+        service.camera.set_camera_config(camera_source=source, camera_index=idx, stream_url=url)
+        updated["camera_source"] = source
+        updated["camera_index"] = idx
+        updated["stream_url"] = url
+    elif config_req.stream_url is not None:
         service.camera.set_stream_url(config_req.stream_url)
         updated["stream_url"] = config_req.stream_url
 

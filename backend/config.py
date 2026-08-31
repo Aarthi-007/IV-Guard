@@ -11,13 +11,14 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Camera Stream
-    stream_url: str = "http://192.168.1.9:8080/video"
+    # Camera Settings (Default: Local Laptop Webcam at index 0)
+    camera_source: str = "local"
+    camera_index: int = 0
+    stream_url: str = ""
     camera_timeout: int = 10
 
     # Model & Tracker
     model_path: str = "models/trained/ivguard_yolo26n_best.pt"
-    pretrained_fallback: str = "yolo26n.pt"
     tracker_config: str = "bytetrack.yaml"
     conf_threshold: float = 0.25
     iou_threshold: float = 0.50
@@ -36,20 +37,20 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["*"]
 
     def get_valid_model_path(self) -> str:
-        """Resolve available model path (trained model or base pretrained)."""
+        """Resolve available trained model path. Raises FileNotFoundError if missing."""
         p = Path(self.model_path)
         if p.exists():
             return str(p)
         
-        pretrained = Path("models/pretrained/yolo26n.pt")
-        if pretrained.exists():
-            return str(pretrained)
-            
-        root_m = Path(self.pretrained_fallback)
+        # Check if model is in current working directory
+        root_m = Path("ivguard_yolo26n_best.pt")
         if root_m.exists():
             return str(root_m)
-            
-        return self.model_path
+
+        raise FileNotFoundError(
+            f"Trained IVGuard YOLO26n weights not found at '{self.model_path}'. "
+            "Please ensure 'models/trained/ivguard_yolo26n_best.pt' exists."
+        )
 
     class Config:
         env_prefix = "IVGUARD_"

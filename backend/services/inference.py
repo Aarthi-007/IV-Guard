@@ -31,7 +31,6 @@ class InferenceService:
                 conf_threshold=settings.conf_threshold,
                 iou_threshold=settings.iou_threshold,
                 imgsz=settings.inference_imgsz,
-                class_names_override={0: "PIV", 1: "TUBE"}
             )
             self.is_loaded = True
             print("[InferenceService] Tracker loaded successfully.")

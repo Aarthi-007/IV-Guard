@@ -41,8 +41,10 @@ class FrameTelemetry(BaseModel):
 
 
 class SystemStatusResponse(BaseModel):
+    camera_source: str = "local"
+    camera_index: int = 0
+    stream_url: str = ""
     camera_connected: bool
-    stream_url: str
     model_loaded: bool
     model_path: str
     tracker_type: str
@@ -64,6 +66,8 @@ class AlertEvent(BaseModel):
 
 
 class UpdateConfigRequest(BaseModel):
+    camera_source: Optional[str] = None
+    camera_index: Optional[int] = None
     stream_url: Optional[str] = None
     conf_threshold: Optional[float] = None
     displacement_threshold_px: Optional[float] = None

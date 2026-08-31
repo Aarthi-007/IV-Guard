@@ -2,7 +2,8 @@
 Camera Service for IVGuard
 Location: backend/services/camera.py
 
-Handles asynchronous zero-latency MJPEG stream acquisition from the IP Webcam.
+Handles asynchronous zero-latency video acquisition from local laptop webcam (cv2.VideoCapture(0))
+or optional IP camera streams.
 Provides thread-safe access to raw and annotated frames for REST, WebSocket, and video endpoints.
 """
 
@@ -19,8 +20,16 @@ from backend.config import settings
 class CameraService:
     """Threaded camera reader ensuring zero-latency real-time video acquisition with auto-reconnect."""
 
-    def __init__(self, stream_url: Optional[str] = None):
-        self.stream_url = str(stream_url or settings.stream_url).strip()
+    def __init__(
+        self,
+        camera_source: Optional[str] = None,
+        camera_index: Optional[int] = None,
+        stream_url: Optional[str] = None
+    ):
+        self.camera_source = str(camera_source or settings.camera_source).strip().lower()
+        self.camera_index = int(camera_index if camera_index is not None else settings.camera_index)
+        self.stream_url = str(stream_url if stream_url is not None else settings.stream_url).strip()
+
         self.latest_frame: Optional[np.ndarray] = None
         self.is_connected = False
         self.is_running = False
@@ -29,30 +38,38 @@ class CameraService:
         self.new_frame_event = threading.Event()
         self.connection_error: Optional[str] = None
         self._current_response: Optional[requests.Response] = None
-        self._url_changed = threading.Event()
+        self._config_changed = threading.Event()
 
-    def set_stream_url(self, new_url: str):
-        """Dynamically update stream URL and trigger instant reconnection."""
-        new_url = str(new_url).strip()
-        if not new_url:
-            return
+    def set_camera_config(self, camera_source: str, camera_index: int = 0, stream_url: str = ""):
+        """Dynamically update camera source (local vs ip_camera) and trigger instant reconnection."""
         with self.lock:
-            if self.stream_url == new_url:
-                return
-            self.stream_url = new_url
+            self.camera_source = str(camera_source).strip().lower()
+            self.camera_index = int(camera_index)
+            self.stream_url = str(stream_url).strip()
             self.is_connected = False
-            self.connection_error = "Reconnecting to new stream URL..."
-            
-        # Close existing HTTP response to break active blocking iter_content
+            self.connection_error = "Switching camera source..."
+
         if self._current_response is not None:
             try:
                 self._current_response.close()
             except Exception:
                 pass
-        self._url_changed.set()
+        self._config_changed.set()
+
+    def set_stream_url(self, new_url: str):
+        """Legacy helper for updating stream URL or camera index string."""
+        url_str = str(new_url).strip()
+        if url_str.isdigit():
+            self.set_camera_config(camera_source="local", camera_index=int(url_str), stream_url="")
+        elif url_str.startswith("http://") or url_str.startswith("https://") or url_str.startswith("rtsp://"):
+            self.set_camera_config(camera_source="ip_camera", camera_index=0, stream_url=url_str)
+        elif url_str == "" or url_str == "local":
+            self.set_camera_config(camera_source="local", camera_index=0, stream_url="")
+        else:
+            self.set_camera_config(camera_source="local", camera_index=0, stream_url=url_str)
 
     def start(self):
-        """Start the background streaming worker."""
+        """Start the background streaming worker thread."""
         if self.is_running:
             return
         self.is_running = True
@@ -61,23 +78,77 @@ class CameraService:
 
     def _worker(self):
         while self.is_running:
-            self._url_changed.clear()
-            target_url = self.stream_url
+            self._config_changed.clear()
 
-            # 1. Check if source is a numeric local webcam (e.g. "0", "1") or local video file
-            is_numeric_cam = target_url.isdigit()
-            is_local_video = not (target_url.startswith("http://") or target_url.startswith("https://") or target_url.startswith("rtsp://"))
-
-            if is_numeric_cam or is_local_video:
-                self._stream_cv2_capture(int(target_url) if is_numeric_cam else target_url)
+            if self.camera_source == "local":
+                self._stream_cv2_local_webcam(self.camera_index)
+            elif self.camera_source == "ip_camera" and self.stream_url:
+                self._stream_http_mjpeg(self.stream_url)
             else:
-                self._stream_http_mjpeg(target_url)
+                # Default fallback: local webcam 0
+                self._stream_cv2_local_webcam(0)
+
+    def _stream_cv2_local_webcam(self, index: int):
+        """Local laptop webcam acquisition using cv2.VideoCapture(index) with zero-latency buffer."""
+        cap = None
+        try:
+            print(f"[CameraService] Opening Local Webcam (index {index}) ...")
+            # Try DirectShow backend on Windows first for fast capture initiation
+            try:
+                cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(index)
+            except Exception:
+                cap = cv2.VideoCapture(index)
+
+            if cap is None or not cap.isOpened():
+                self.is_connected = False
+                self.connection_error = f"Cannot open local webcam at index {index}"
+                print(f"[CameraService] [ERROR] Failed to open local webcam {index}")
+                time.sleep(1.5)
+                return
+
+            # Set hardware capture properties for zero latency & optimal resolution
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+
+            self.is_connected = True
+            self.connection_error = None
+            print(f"[CameraService] Local Webcam (index {index}) connected successfully.")
+
+            while self.is_running and not self._config_changed.is_set():
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    print(f"[CameraService] [WARN] Empty frame from webcam {index}. Retrying...")
+                    time.sleep(0.05)
+                    break
+
+                with self.lock:
+                    self.latest_frame = frame
+                self.new_frame_event.set()
+                time.sleep(0.005)  # Yield CPU to inference pipeline
+
+        except Exception as e:
+            self.is_connected = False
+            self.connection_error = f"Webcam error: {str(e)}"
+            print(f"[CameraService] Exception in webcam capture: {e}")
+            time.sleep(1.5)
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+            self.is_connected = False
 
     def _stream_http_mjpeg(self, url: str):
+        """Optional HTTP MJPEG network stream reader for external cameras."""
         bytes_buffer = b""
         session = requests.Session()
         try:
-            print(f"[CameraService] Connecting to HTTP stream: {url} ...")
+            print(f"[CameraService] Connecting to IP Camera stream: {url} ...")
             response = session.get(url, stream=True, timeout=settings.camera_timeout)
             self._current_response = response
 
@@ -89,26 +160,24 @@ class CameraService:
 
             self.is_connected = True
             self.connection_error = None
-            print(f"[CameraService] Connected successfully to {url}")
+            print(f"[CameraService] IP Camera connected successfully to {url}")
 
             for chunk in response.iter_content(chunk_size=4096):
-                if not self.is_running or self._url_changed.is_set():
+                if not self.is_running or self._config_changed.is_set():
                     break
                 if not chunk:
                     continue
 
                 bytes_buffer += chunk
 
-                # Robust JPEG frame extractor
+                # Robust JPEG delimiter extractor
                 last_frame_bytes = None
                 while True:
                     start_idx = bytes_buffer.find(b"\xff\xd8")
                     if start_idx == -1:
-                        # No SOI marker; clear buffer to avoid accumulating garbage
                         bytes_buffer = b""
                         break
 
-                    # Trim leading garbage before SOI marker
                     if start_idx > 0:
                         bytes_buffer = bytes_buffer[start_idx:]
 
@@ -126,12 +195,11 @@ class CameraService:
                             self.latest_frame = frame
                         self.new_frame_event.set()
 
-                # Keep buffer bounded to prevent memory growth
                 if len(bytes_buffer) > 100000:
                     bytes_buffer = bytes_buffer[-20000:]
 
         except Exception as e:
-            if not self._url_changed.is_set():
+            if not self._config_changed.is_set():
                 self.is_connected = False
                 self.connection_error = str(e)
                 time.sleep(1.5)
@@ -142,43 +210,8 @@ class CameraService:
                 pass
             self._current_response = None
 
-    def _stream_cv2_capture(self, source):
-        """Fallback stream reader using cv2.VideoCapture for local webcams or video files."""
-        try:
-            print(f"[CameraService] Opening OpenCV VideoCapture source: {source} ...")
-            cap = cv2.VideoCapture(source)
-            if not cap.isOpened():
-                self.is_connected = False
-                self.connection_error = f"Cannot open capture source: {source}"
-                time.sleep(1.5)
-                return
-
-            self.is_connected = True
-            self.connection_error = None
-            print(f"[CameraService] Capture source opened successfully.")
-
-            while self.is_running and not self._url_changed.is_set():
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    # If video file reached end, loop it
-                    if isinstance(source, str):
-                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        continue
-                    break
-
-                with self.lock:
-                    self.latest_frame = frame
-                self.new_frame_event.set()
-                time.sleep(0.015)  # Cap loop rate for local files
-
-            cap.release()
-        except Exception as e:
-            self.is_connected = False
-            self.connection_error = str(e)
-            time.sleep(1.5)
-
     def get_latest_frame(self, timeout: float = 1.0) -> Tuple[bool, Optional[np.ndarray]]:
-        """Retrieve the newest frame."""
+        """Retrieve the newest available frame without queue buildup."""
         if self.new_frame_event.wait(timeout=timeout):
             self.new_frame_event.clear()
             with self.lock:
@@ -191,14 +224,15 @@ class CameraService:
         while self.is_running:
             ret, frame = self.get_latest_frame(timeout=0.5)
             if not ret or frame is None:
-                # Return placeholder if camera offline
+                # Return clean placeholder if camera is initializing/reconnecting
                 placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
-                msg = self.connection_error or f"Connecting to {self.stream_url}..."
+                source_label = "Laptop Webcam" if self.camera_source == "local" else "External Camera"
+                msg = self.connection_error or f"Connecting to {source_label}..."
                 if len(msg) > 40:
                     msg = msg[:37] + "..."
                 cv2.putText(
                     placeholder,
-                    "Connecting to Camera Stream...",
+                    f"Connecting to {source_label}...",
                     (80, 220),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
@@ -223,14 +257,14 @@ class CameraService:
             if get_annotated_frame_fn is not None:
                 frame = get_annotated_frame_fn(frame)
 
-            _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
 
     def stop(self):
-        """Safely terminate camera worker thread."""
+        """Safely terminate camera worker thread and release hardware handles."""
         self.is_running = False
-        self._url_changed.set()
+        self._config_changed.set()
         if self._current_response is not None:
             try:
                 self._current_response.close()

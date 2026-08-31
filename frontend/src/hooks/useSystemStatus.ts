@@ -17,8 +17,10 @@ export function useSystemStatus(isDemoMode: boolean = false, pollIntervalMs: num
     if (isDemoMode) {
       setIsBackendOnline(true);
       setStatus({
+        camera_source: 'local',
+        camera_index: 0,
+        stream_url: '',
         camera_connected: true,
-        stream_url: 'http://192.168.1.9:8080/video',
         model_loaded: true,
         model_path: 'models/trained/ivguard_yolo26n_best.pt',
         tracker_type: 'bytetrack.yaml',

@@ -14,6 +14,7 @@ interface MonitoringPageProps {
   chartHistory: TelemetryPoint[];
   alerts: AlertEvent[];
   isLive: boolean;
+  isBackendOnline: boolean;
   isDemoMode: boolean;
   demoStatus: TrackingStatusType;
   onToggleDemo: () => void;
@@ -28,6 +29,7 @@ export const MonitoringPage: React.FC<MonitoringPageProps> = ({
   chartHistory,
   alerts,
   isLive,
+  isBackendOnline,
   isDemoMode,
   demoStatus,
   onResetBaseline,
@@ -46,7 +48,7 @@ export const MonitoringPage: React.FC<MonitoringPageProps> = ({
           <LiveCameraFeed
             telemetry={telemetry}
             cameraConnected={cameraConnected}
-            isLive={isLive || isDemoMode}
+            isBackendConnected={isBackendOnline || isDemoMode}
             isDemoMode={isDemoMode}
             fps={fps}
           />

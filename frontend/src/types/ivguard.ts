@@ -44,8 +44,10 @@ export interface FrameTelemetry {
 }
 
 export interface SystemStatusResponse {
-  camera_connected: boolean;
+  camera_source: 'local' | 'ip_camera' | string;
+  camera_index: number;
   stream_url: string;
+  camera_connected: boolean;
   model_loaded: boolean;
   model_path: string;
   tracker_type: string;
@@ -67,6 +69,8 @@ export interface AlertEvent {
 }
 
 export interface UpdateConfigRequest {
+  camera_source?: string;
+  camera_index?: number;
   stream_url?: string;
   conf_threshold?: number;
   displacement_threshold_px?: number;

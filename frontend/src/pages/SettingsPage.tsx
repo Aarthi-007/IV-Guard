@@ -1,14 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ApiService } from '../services/api';
-import { Camera, Sliders, Save, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Camera, Sliders, Save, CheckCircle2, AlertTriangle, Video, Globe } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
-  const [streamUrl, setStreamUrl] = useState('http://192.168.1.9:8080/video');
-  const [displacementThreshold, setDisplacementThreshold] = useState(15.0);
-  const [consecutiveFrames, setConsecutiveFrames] = useState(10);
-  const [confThreshold, setConfThreshold] = useState(0.25);
+  const [cameraSource, setCameraSource] = useState<'local' | 'ip_camera'>('local');
+  const [cameraIndex, setCameraIndex] = useState<number>(0);
+  const [streamUrl, setStreamUrl] = useState<string>('');
+  const [displacementThreshold, setDisplacementThreshold] = useState<number>(15.0);
+  const [consecutiveFrames, setConsecutiveFrames] = useState<number>(10);
+  const [confThreshold, setConfThreshold] = useState<number>(0.25);
   const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    // Fetch current settings on load
+    ApiService.getStatus()
+      .then((st) => {
+        if (st.camera_source) {
+          setCameraSource(st.camera_source === 'ip_camera' ? 'ip_camera' : 'local');
+        }
+        if (st.camera_index !== undefined) {
+          setCameraIndex(st.camera_index);
+        }
+        if (st.stream_url) {
+          setStreamUrl(st.stream_url);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleApplyConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,14 +35,16 @@ export const SettingsPage: React.FC = () => {
     setStatusMsg(null);
     try {
       await ApiService.updateConfig({
-        stream_url: streamUrl,
+        camera_source: cameraSource,
+        camera_index: cameraIndex,
+        stream_url: cameraSource === 'ip_camera' ? streamUrl.trim() : '',
         displacement_threshold_px: Number(displacementThreshold),
         consecutive_frames_threshold: Number(consecutiveFrames),
         conf_threshold: Number(confThreshold),
       });
       setStatusMsg({
         type: 'success',
-        text: 'Engineering configuration parameters successfully updated on backend.',
+        text: 'Camera source and monitoring parameters updated successfully.',
       });
     } catch (err: any) {
       setStatusMsg({
@@ -39,9 +60,9 @@ export const SettingsPage: React.FC = () => {
     <div className="p-8 space-y-6 max-w-[1000px] mx-auto">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Engineering Configuration</h2>
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight">System Settings & Camera Configuration</h2>
         <p className="text-xs text-slate-500 font-normal mt-0.5">
-          Tune runtime computer vision, tracking thresholds, and video stream sources.
+          Configure video acquisition source (Laptop Webcam vs External Camera) and movement detection thresholds.
         </p>
       </div>
 
@@ -68,23 +89,81 @@ export const SettingsPage: React.FC = () => {
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
             <Camera className="w-4 h-4 text-blue-600" />
             <h3 className="text-sm font-semibold text-slate-900">
-              Video Acquisition Source
+              Camera Acquisition Source
             </h3>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">Camera Stream URL / Index</label>
-            <input
-              type="text"
-              value={streamUrl}
-              onChange={(e) => setStreamUrl(e.target.value)}
-              placeholder="e.g. http://192.168.1.9:8080/video or 0 for local webcam"
-              className="w-full bg-slate-50 border border-slate-200 focus:border-blue-600 rounded-xl px-4 py-2.5 text-xs text-slate-900 outline-none transition-colors"
-            />
-            <p className="text-xs text-slate-400 mt-1.5">
-              Accepts IP Webcam MJPEG endpoints (`http://.../video`), RTSP URLs, or local webcam indices (`0`, `1`).
-            </p>
+          {/* Camera Type Selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <label
+              onClick={() => {
+                setCameraSource('local');
+                setCameraIndex(0);
+                setStreamUrl('');
+              }}
+              className={`p-4 rounded-xl border cursor-pointer flex items-start gap-3 transition-all ${
+                cameraSource === 'local'
+                  ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600'
+                  : 'border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Video className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">Laptop Webcam (Default)</span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  Uses OpenCV VideoCapture(0) directly on this machine. No IP address or network configuration needed.
+                </span>
+              </div>
+            </label>
+
+            <label
+              onClick={() => {
+                setCameraSource('ip_camera');
+              }}
+              className={`p-4 rounded-xl border cursor-pointer flex items-start gap-3 transition-all ${
+                cameraSource === 'ip_camera'
+                  ? 'border-blue-600 bg-blue-50/50 ring-1 ring-blue-600'
+                  : 'border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Globe className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="text-xs font-bold text-slate-900 block">External / IP Camera (Advanced)</span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  Optional network camera stream (MJPEG over HTTP or RTSP URL).
+                </span>
+              </div>
+            </label>
           </div>
+
+          {cameraSource === 'local' ? (
+            <div className="pt-2 flex items-center gap-3">
+              <label className="text-xs font-semibold text-slate-700">Camera Device Index:</label>
+              <input
+                type="number"
+                min="0"
+                max="5"
+                value={cameraIndex}
+                onChange={(e) => setCameraIndex(Number(e.target.value))}
+                className="w-20 bg-slate-50 border border-slate-200 focus:border-blue-600 rounded-lg px-3 py-1.5 text-xs text-slate-900 font-mono text-center outline-none"
+              />
+              <span className="text-[11px] text-slate-400">Default is 0 for the built-in webcam.</span>
+            </div>
+          ) : (
+            <div className="pt-2 animate-in fade-in space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-700">Stream URL</label>
+              <input
+                type="text"
+                value={streamUrl}
+                onChange={(e) => setStreamUrl(e.target.value)}
+                placeholder="http://192.168.1.X:8080/video"
+                className="w-full bg-slate-50 border border-slate-200 focus:border-blue-600 rounded-xl px-4 py-2.5 text-xs text-slate-900 outline-none transition-colors font-mono"
+              />
+              <span className="text-[11px] text-slate-400 block">
+                Enter the HTTP/RTSP endpoint of the external camera.
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Spatial & Tracking Thresholds */}

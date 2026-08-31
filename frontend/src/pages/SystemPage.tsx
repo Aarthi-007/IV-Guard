@@ -20,7 +20,7 @@ export const SystemPage: React.FC<SystemPageProps> = ({
     {
       title: 'Video Ingestion',
       sub: 'CameraService',
-      details: status?.stream_url || 'http://192.168.1.9:8080/video',
+      details: status?.stream_url === '0' ? 'Local Laptop Webcam (Index 0)' : (status?.stream_url || 'Local Laptop Webcam (0)'),
       status: status?.camera_connected ? 'CONNECTED' : 'DISCONNECTED',
       isOk: Boolean(status?.camera_connected),
     },

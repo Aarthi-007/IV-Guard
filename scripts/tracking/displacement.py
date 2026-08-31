@@ -6,7 +6,7 @@ Calculates image-space displacement metrics and maintains temporal position hist
 - Euclidean displacement from calibrated reference position
 - Temporal smoothing and noise rejection
 - Relative spatial distance between TUBE and PIV anchor
-- Engineering status classification: STABLE, MOVEMENT DETECTED, LOST TRACK
+- Engineering status classification: INITIALIZING, STABLE, MOVEMENT DETECTED, LOST TRACK
 """
 
 import math
@@ -51,8 +51,6 @@ class DisplacementAnalyzer:
     
     NOTE ON CAMERA MOTION:
     All displacement metrics calculated here are in IMAGE-SPACE PIXELS (px).
-    Physical displacement in centimeters and camera-motion compensation (ego-motion subtraction)
-    will be integrated in subsequent project modules.
     """
 
     def __init__(
@@ -65,8 +63,6 @@ class DisplacementAnalyzer:
         purge_frames: int = 60
     ):
         """
-        Initialize the displacement analyzer.
-
         Args:
             init_frames: Number of stable frames needed to establish baseline reference position.
             displacement_threshold_px: Image-space displacement threshold (pixels) to consider as potential movement.
@@ -84,6 +80,13 @@ class DisplacementAnalyzer:
 
         self.tracks: Dict[int, TrackHistory] = {}
         self.primary_piv_track_id: Optional[int] = None
+        self.total_frames_seen: int = 0
+
+    def reset(self):
+        """Clear all track histories and reset baseline calibration to INITIALIZING."""
+        self.tracks.clear()
+        self.primary_piv_track_id = None
+        self.total_frames_seen = 0
 
     def update(
         self,
@@ -105,6 +108,7 @@ class DisplacementAnalyzer:
         if timestamp is None:
             timestamp = time.time()
 
+        self.total_frames_seen += 1
         seen_track_ids = set()
         piv_positions: Dict[int, Tuple[float, float]] = {}
 
@@ -133,7 +137,7 @@ class DisplacementAnalyzer:
             track.smoothed_center = (avg_x, avg_y)
 
             # Check if this object is a PIV (Anchor)
-            if "piv" in obj.class_name.lower() or "catheter" in obj.class_name.lower() or obj.class_id == 0:
+            if "piv" in obj.class_name.lower() or "catheter" in obj.class_name.lower() or obj.class_id == 0 or obj.class_id == 1:
                 piv_positions[tid] = track.smoothed_center
                 if self.primary_piv_track_id is None or self.primary_piv_track_id == tid:
                     self.primary_piv_track_id = tid
@@ -147,6 +151,7 @@ class DisplacementAnalyzer:
                     track.reference_center = (float(np.median(xs)), float(np.median(ys)))
                     track.is_calibrated = True
                     track.status = TrackingStatus.STABLE
+                    track.current_displacement_px = 0.0
                 else:
                     track.status = TrackingStatus.INITIALIZING
                     track.current_displacement_px = 0.0
@@ -171,11 +176,9 @@ class DisplacementAnalyzer:
 
         # 2. Update Primary PIV anchor reference
         if piv_positions:
-            # If current primary PIV is active, keep it; else choose the first active PIV
             if self.primary_piv_track_id not in piv_positions:
                 self.primary_piv_track_id = next(iter(piv_positions.keys()))
         elif self.primary_piv_track_id is not None:
-            # Check if primary PIV is missing too long
             piv_track = self.tracks.get(self.primary_piv_track_id)
             if piv_track and (frame_number - piv_track.last_seen_frame) > self.grace_period_frames:
                 self.primary_piv_track_id = None
@@ -185,7 +188,7 @@ class DisplacementAnalyzer:
         
         for tid in seen_track_ids:
             track = self.tracks[tid]
-            if "tube" in track.class_name.lower() or track.class_id == 1:
+            if "tube" in track.class_name.lower() or track.class_id == 2 or track.class_id == 1:
                 if anchor_piv_pos is not None and track.smoothed_center is not None:
                     rx = track.smoothed_center[0] - anchor_piv_pos[0]
                     ry = track.smoothed_center[1] - anchor_piv_pos[1]
@@ -204,31 +207,36 @@ class DisplacementAnalyzer:
                 frames_missing = frame_number - track.last_seen_frame
 
                 if frames_missing > self.purge_frames:
-                    # Purge stale tracks from memory
                     del self.tracks[tid]
                 elif frames_missing > self.grace_period_frames:
                     track.status = TrackingStatus.LOST_TRACK
                 else:
-                    # Grace period: keep previous status without calculating invalid displacement
                     pass
 
         return self.tracks
 
     def get_overall_system_status(self) -> TrackingStatus:
-        """Determines the aggregated system status across all active tracks."""
+        """Determines the aggregated system status across currently active tracks."""
         if not self.tracks:
+            return TrackingStatus.INITIALIZING if self.total_frames_seen < self.init_frames else TrackingStatus.LOST_TRACK
+
+        active_tracks = [t for t in self.tracks.values() if t.status != TrackingStatus.LOST_TRACK]
+        if not active_tracks:
             return TrackingStatus.LOST_TRACK
 
-        has_movement = any(t.status == TrackingStatus.MOVEMENT_DETECTED for t in self.tracks.values())
+        # If any active track is still calibrating its baseline, status is INITIALIZING
+        has_init = any(t.status == TrackingStatus.INITIALIZING for t in active_tracks)
+        if has_init:
+            return TrackingStatus.INITIALIZING
+
+        # Check for confirmed sustained movement
+        has_movement = any(t.status == TrackingStatus.MOVEMENT_DETECTED for t in active_tracks)
         if has_movement:
             return TrackingStatus.MOVEMENT_DETECTED
 
-        has_stable = any(t.status == TrackingStatus.STABLE for t in self.tracks.values())
+        # Stable calibrated tracks
+        has_stable = any(t.status == TrackingStatus.STABLE for t in active_tracks)
         if has_stable:
             return TrackingStatus.STABLE
-
-        has_init = any(t.status == TrackingStatus.INITIALIZING for t in self.tracks.values())
-        if has_init:
-            return TrackingStatus.INITIALIZING
 
         return TrackingStatus.LOST_TRACK

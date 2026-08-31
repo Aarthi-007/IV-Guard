@@ -184,11 +184,13 @@ class MonitoringService:
         """Construct full system status summary."""
         with self.lock:
             active_cnt = len(self.latest_telemetry.active_tracks) if self.latest_telemetry else 0
-            overall = self.latest_telemetry.overall_status if self.latest_telemetry else "DISCONNECTED"
+            overall = self.latest_telemetry.overall_status if self.latest_telemetry else "INITIALIZING"
 
         return SystemStatusResponse(
-            camera_connected=self.camera.is_connected,
+            camera_source=self.camera.camera_source,
+            camera_index=self.camera.camera_index,
             stream_url=self.camera.stream_url,
+            camera_connected=self.camera.is_connected,
             model_loaded=self.inference.is_loaded,
             model_path=self.inference.model_path,
             tracker_type=settings.tracker_config,

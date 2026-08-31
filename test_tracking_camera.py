@@ -27,8 +27,8 @@ from scripts.tracking.displacement import DisplacementAnalyzer, TrackHistory, Tr
 # -----------------------------------------------------------------------------
 # Configuration Constants
 # -----------------------------------------------------------------------------
-STREAM_URL = "http://192.168.1.9:8080/video"
-MODEL_PATH = "yolo26n.pt"
+STREAM_URL = "0"  # Default: local laptop webcam index 0
+MODEL_PATH = "models/trained/ivguard_yolo26n_best.pt" if Path("models/trained/ivguard_yolo26n_best.pt").exists() else "models/pretrained/yolo26n.pt"
 TRACKER_CONFIG = "bytetrack.yaml"
 CONF_THRESHOLD = 0.25
 IOU_THRESHOLD = 0.5

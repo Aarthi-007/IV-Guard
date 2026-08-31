@@ -1,21 +1,28 @@
-# IVGuard Configuration
+# IVGuard Global Configuration
 
 camera:
-  stream_url: "http://192.168.1.9:8080/video"
-  timeout_seconds: 10
-  chunk_size: 1024
+  camera_source: "local"
+  camera_index: 0
+  stream_url: ""
+  timeout: 10
 
 model:
-  pretrained_path: "models/pretrained/yolo26n.pt"
+  path: "models/trained/ivguard_yolo26n_best.pt"
+  tracker_config: "bytetrack.yaml"
   conf_threshold: 0.25
-  iou_threshold: 0.45
+  iou_threshold: 0.50
+  imgsz: 480
 
-tracking:
-  tracker_type: "bytetrack"
+displacement:
+  init_frames: 30
+  threshold_px: 15.0
+  consecutive_frames: 10
+  smoothing_window: 5
+  grace_period_frames: 20
 
-analysis:
-  displacement_threshold: 0.15
-  sustained_window_frames: 30
+alert:
+  cooldown_seconds: 3.0
 
-alerts:
-  warning_level: "human_assessment_recommended"
+server:
+  host: "0.0.0.0"
+  port: 8000
