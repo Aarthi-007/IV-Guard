@@ -28,7 +28,8 @@ from scripts.tracking.displacement import DisplacementAnalyzer, TrackHistory, Tr
 # Configuration Constants
 # -----------------------------------------------------------------------------
 STREAM_URL = "http://192.168.1.9:8080/video"
-MODEL_PATH = "yolo26n.pt"
+trained_weights = Path("models/trained/ivguard_yolo26n_best.pt")
+MODEL_PATH = str(trained_weights) if trained_weights.exists() else "yolo26n.pt"
 TRACKER_CONFIG = "bytetrack.yaml"
 CONF_THRESHOLD = 0.25
 IOU_THRESHOLD = 0.5

@@ -1,3 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cu130
+
 anyio==4.14.2
 certifi==2026.7.22
 charset-normalizer==3.5.1
@@ -30,8 +32,8 @@ PyYAML==6.0.3
 requests==2.34.2
 six==1.17.0
 sympy==1.14.0
-torch==2.13.0
-torchvision==0.28.0
+torch==2.13.0+cu130
+torchvision==0.28.0+cu130
 typing_extensions==4.16.0
 ultralytics==8.4.136
 ultralytics-platform==0.1.20

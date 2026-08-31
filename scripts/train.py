@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument(
         "--data",
         type=str,
-        default="D:/IVGUARD/datasets/processed/ivguard_yolo/data.yaml",
+        default="datasets/data.yaml",
         help="Path to data.yaml dataset config"
     )
     parser.add_argument(
@@ -95,7 +95,7 @@ def main():
     print("=" * 70)
 
     # 1. Validate paths
-    data_path = Path(args.data)
+    data_path = Path(args.data).resolve()
     if not data_path.exists():
         print(f"[ERROR] Dataset configuration not found at: {data_path}")
         sys.exit(1)
@@ -107,8 +107,9 @@ def main():
         if fallback.exists():
             model_path = fallback
         else:
-            print(f"[ERROR] Model weights not found at: {model_path}")
-            sys.exit(1)
+            print(f"[INFO] Local model weights not found at {model_path} or models/pretrained/{model_path.name}.")
+            print("       Ultralytics will attempt to download the pretrained weights automatically...")
+            model_path = Path(model_path.name)
 
     # 2. Determine device
     if args.device == "auto":
@@ -116,14 +117,17 @@ def main():
     else:
         device = args.device
 
+    project_path = Path(args.project).resolve()
+    dest_best = Path(args.save_best_to).resolve()
+
     print(f"  Dataset Config:     {data_path}")
     print(f"  Base Model:         {model_path}")
     print(f"  Training Device:    {device} ({'GPU' if device != 'cpu' else 'CPU'})")
     print(f"  Epochs:             {args.epochs}")
     print(f"  Image Size:         {args.imgsz}")
     print(f"  Batch Size:         {args.batch}")
-    print(f"  Output Project:     {args.project}/{args.name}")
-    print(f"  Save Best Weights:  {args.save_best_to}")
+    print(f"  Output Project:     {project_path / args.name}")
+    print(f"  Save Best Weights:  {dest_best}")
     print("=" * 70)
 
     if device == "cpu":
@@ -147,7 +151,7 @@ def main():
             device=device,
             workers=args.workers,
             patience=args.patience,
-            project=args.project,
+            project=str(project_path),
             name=args.name,
             exist_ok=True,
             save=True,
@@ -166,24 +170,32 @@ def main():
     print("=" * 70)
 
     # 5. Locate and Copy Best Weights
-    run_dir = Path(args.project) / args.name
+    run_dir = project_path / args.name
     best_pt = run_dir / "weights" / "best.pt"
     last_pt = run_dir / "weights" / "last.pt"
 
-    dest_best = Path(args.save_best_to)
     dest_best.parent.mkdir(parents=True, exist_ok=True)
 
     if best_pt.exists():
         shutil.copy2(best_pt, dest_best)
-        print(f"✅ Best weights saved to: {dest_best.resolve()}")
+        print(f"✅ Best weights saved to: {dest_best}")
     elif last_pt.exists():
         shutil.copy2(last_pt, dest_best)
-        print(f"✅ Last weights saved to: {dest_best.resolve()}")
+        print(f"✅ Last weights saved to: {dest_best}")
+    else:
+        print(f"[WARN] Trained weights not found at {best_pt} or {last_pt}. Copy skipped.")
 
     # 6. Evaluation & Summary
     print("\n📊 Evaluating trained model on test split...")
     try:
-        val_results = model.val(data=str(data_path), split="test", imgsz=args.imgsz, device=device)
+        val_results = model.val(
+            data=str(data_path),
+            split="test",
+            imgsz=args.imgsz,
+            device=device,
+            project=str(project_path),
+            name=f"{args.name}_val"
+        )
         print(f"   mAP@50:    {val_results.box.map50:.4f}")
         print(f"   mAP@50-95: {val_results.box.map:.4f}")
     except Exception as e:
