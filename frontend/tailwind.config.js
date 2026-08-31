@@ -4,46 +4,47 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        background: "#090D14",
-        surface: {
-          50: "#1E2638",
-          100: "#161D2B",
-          200: "#111622",
-          300: "#0D121C",
-          400: "#090D14"
+        background: "#F8FAFC",
+        surface: "#FFFFFF",
+        primary: {
+          50: "#EFF6FF",
+          100: "#DBEAFE",
+          200: "#BFDBFE",
+          500: "#3B82F6",
+          600: "#2563EB",
+          700: "#1D4ED8",
         },
         border: {
-          subtle: "#1F293D",
-          DEFAULT: "#26334D",
-          highlight: "#3B82F6"
+          light: "#F1F5F9",
+          DEFAULT: "#E2E8F0",
+          dark: "#CBD5E1",
+        },
+        text: {
+          primary: "#0F172A",
+          secondary: "#64748B",
+          muted: "#94A3B8",
         },
         status: {
-          stable: "#10B981",       // Emerald Green
-          initializing: "#F59E0B", // Amber
-          movement: "#EF4444",     // Vivid Alert Red
-          lost: "#64748B",         // Slate Gray
-          cyan: "#06B6D4",         // CV Tech Cyan
-          piv: "#38BDF8",          // Sky Blue (PIV)
-          tube: "#F97316"          // Amber Orange (TUBE)
+          stable: "#10B981",
+          warning: "#F59E0B",
+          alert: "#EF4444",
+          offline: "#64748B",
         }
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
       },
       boxShadow: {
-        'glow-cyan': '0 0 15px -3px rgba(6, 182, 212, 0.25)',
-        'glow-red': '0 0 20px -2px rgba(239, 68, 68, 0.35)',
-        'glow-green': '0 0 15px -3px rgba(16, 185, 129, 0.25)',
-        'glow-amber': '0 0 15px -3px rgba(245, 158, 11, 0.25)'
+        'card': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+        'card-hover': '0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04)',
       },
-      animation: {
-        'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+      borderRadius: {
+        'xl': '0.75rem',
+        '2xl': '1rem',
       }
     },
   },
