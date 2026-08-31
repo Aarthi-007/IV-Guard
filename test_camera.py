@@ -1,15 +1,37 @@
+import sys
 import cv2
 import numpy as np
 import requests
 
-STREAM_URL = "http://192.168.1.9:8080/video"
+DEFAULT_URL = "http://192.168.1.9:8080/video"
 
 
 def main():
-    print(f"Connecting to camera stream at {STREAM_URL} ...")
+    stream_url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
+    print(f"Connecting to camera stream at {stream_url} ...")
+
+    # Local webcam or video file
+    if stream_url.isdigit() or not (stream_url.startswith("http://") or stream_url.startswith("https://")):
+        src = int(stream_url) if stream_url.isdigit() else stream_url
+        cap = cv2.VideoCapture(src)
+        if not cap.isOpened():
+            print(f"❌ Failed to open video source: {src}")
+            return
+        print(f"✅ Video source {src} opened successfully! Press 'q' to exit.")
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            cv2.imshow("IVGuard - Live Camera", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+        cap.release()
+        cv2.destroyAllWindows()
+        return
+
+    # HTTP MJPEG Stream
     try:
-        # Open HTTP stream with stream=True
-        stream_response = requests.get(STREAM_URL, stream=True, timeout=10)
+        stream_response = requests.get(stream_url, stream=True, timeout=10)
         if stream_response.status_code != 200:
             print(f"❌ Failed to connect: HTTP status {stream_response.status_code}")
             return
@@ -23,35 +45,38 @@ def main():
     bytes_buffer = b""
 
     try:
-        # Read stream incrementally
-        for chunk in stream_response.iter_content(chunk_size=1024):
+        for chunk in stream_response.iter_content(chunk_size=4096):
             if not chunk:
                 print("❌ Stream ended.")
                 break
 
             bytes_buffer += chunk
 
-            # Find JPEG SOI (Start of Image) and EOI (End of Image) markers
-            start_idx = bytes_buffer.find(b"\xff\xd8")
-            end_idx = bytes_buffer.find(b"\xff\xd9")
+            last_frame = None
+            while True:
+                start_idx = bytes_buffer.find(b"\xff\xd8")
+                if start_idx == -1:
+                    bytes_buffer = b""
+                    break
 
-            # Check if a complete JPEG frame is present
-            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                # Extract the full JPEG binary data
-                jpg_data = bytes_buffer[start_idx : end_idx + 2]
-                # Retain remaining bytes in the buffer for the next frame
-                bytes_buffer = bytes_buffer[end_idx + 2 :]
+                if start_idx > 0:
+                    bytes_buffer = bytes_buffer[start_idx:]
 
-                # Decode JPEG frame to OpenCV image array
-                frame = cv2.imdecode(np.frombuffer(jpg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+                end_idx = bytes_buffer.find(b"\xff\xd9")
+                if end_idx != -1:
+                    last_frame = bytes_buffer[: end_idx + 2]
+                    bytes_buffer = bytes_buffer[end_idx + 2 :]
+                else:
+                    break
 
+            if last_frame is not None:
+                frame = cv2.imdecode(np.frombuffer(last_frame, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if frame is not None:
                     cv2.imshow("IVGuard - Live Phone Camera", frame)
 
-                # Press 'q' to quit
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    print("Quitting by user request...")
-                    break
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                print("Quitting by user request...")
+                break
 
     except KeyboardInterrupt:
         print("\nInterrupted by user.")

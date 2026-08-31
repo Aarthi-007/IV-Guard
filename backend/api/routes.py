@@ -80,7 +80,7 @@ async def update_config(config_req: UpdateConfigRequest, service=Depends(get_mon
         updated["conf_threshold"] = config_req.conf_threshold
 
     if config_req.stream_url is not None and config_req.stream_url != service.camera.stream_url:
-        service.camera.stream_url = config_req.stream_url
+        service.camera.set_stream_url(config_req.stream_url)
         updated["stream_url"] = config_req.stream_url
 
     return {"status": "success", "updated_parameters": updated}

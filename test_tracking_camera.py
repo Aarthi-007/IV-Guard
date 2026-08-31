@@ -52,12 +52,12 @@ COLOR_GRAY = (128, 128, 128)     # Lost Track
 
 class ThreadedMJPEGReader:
     """
-    Background worker thread that continuously consumes the MJPEG stream
+    Background worker thread that continuously consumes camera feeds (HTTP MJPEG, local webcam index, or video file)
     and stores only the most recent frame, eliminating network buffer buildup and lag.
     """
 
     def __init__(self, stream_url: str):
-        self.stream_url = stream_url
+        self.stream_url = str(stream_url).strip()
         self.latest_frame = None
         self.is_running = False
         self.lock = threading.Lock()
@@ -70,17 +70,28 @@ class ThreadedMJPEGReader:
         self.is_running = True
         self.thread = threading.Thread(target=self._stream_worker, daemon=True)
         self.thread.start()
-        # Wait up to 5 seconds for initial connection
-        if not self.connected_event.wait(timeout=5.0):
+        # Wait up to 6 seconds for initial connection
+        if not self.connected_event.wait(timeout=6.0):
             if self.connection_error:
                 raise ConnectionError(self.connection_error)
-            raise TimeoutError("Timed out waiting for camera stream.")
+            raise TimeoutError(f"Timed out waiting for camera stream at {self.stream_url}")
         return self
 
     def _stream_worker(self):
+        target = self.stream_url
+        is_numeric = target.isdigit()
+        is_local = not (target.startswith("http://") or target.startswith("https://") or target.startswith("rtsp://"))
+
+        if is_numeric or is_local:
+            self._worker_cv2(int(target) if is_numeric else target)
+        else:
+            self._worker_http(target)
+
+    def _worker_http(self, url: str):
         bytes_buffer = b""
+        session = requests.Session()
         try:
-            stream_response = requests.get(self.stream_url, stream=True, timeout=10)
+            stream_response = session.get(url, stream=True, timeout=10)
             if stream_response.status_code != 200:
                 self.connection_error = f"HTTP status {stream_response.status_code}"
                 self.connected_event.set()
@@ -88,7 +99,7 @@ class ThreadedMJPEGReader:
 
             self.connected_event.set()
 
-            for chunk in stream_response.iter_content(chunk_size=2048):
+            for chunk in stream_response.iter_content(chunk_size=4096):
                 if not self.is_running:
                     break
                 if not chunk:
@@ -96,19 +107,25 @@ class ThreadedMJPEGReader:
 
                 bytes_buffer += chunk
 
-                # Find latest full JPEG in the accumulated buffer
+                # Robust extraction of latest full JPEG frame
                 last_frame = None
                 while True:
                     start_idx = bytes_buffer.find(b"\xff\xd8")
+                    if start_idx == -1:
+                        bytes_buffer = b""
+                        break
+
+                    if start_idx > 0:
+                        bytes_buffer = bytes_buffer[start_idx:]
+
                     end_idx = bytes_buffer.find(b"\xff\xd9")
-                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                        jpg_data = bytes_buffer[start_idx : end_idx + 2]
+                    if end_idx != -1:
+                        jpg_data = bytes_buffer[: end_idx + 2]
                         bytes_buffer = bytes_buffer[end_idx + 2 :]
                         last_frame = jpg_data
                     else:
                         break
 
-                # Decode only the newest available frame
                 if last_frame is not None:
                     decoded = cv2.imdecode(np.frombuffer(last_frame, dtype=np.uint8), cv2.IMREAD_COLOR)
                     if decoded is not None:
@@ -116,10 +133,42 @@ class ThreadedMJPEGReader:
                             self.latest_frame = decoded
                         self.new_frame_event.set()
 
-                # Keep buffer bounded
                 if len(bytes_buffer) > 100000:
                     bytes_buffer = bytes_buffer[-20000:]
 
+        except Exception as e:
+            self.connection_error = str(e)
+            self.connected_event.set()
+        finally:
+            try:
+                session.close()
+            except Exception:
+                pass
+            self.is_running = False
+
+    def _worker_cv2(self, source):
+        try:
+            cap = cv2.VideoCapture(source)
+            if not cap.isOpened():
+                self.connection_error = f"Cannot open capture source: {source}"
+                self.connected_event.set()
+                return
+
+            self.connected_event.set()
+            while self.is_running:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    if isinstance(source, str):
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        continue
+                    break
+
+                with self.lock:
+                    self.latest_frame = frame
+                self.new_frame_event.set()
+                time.sleep(0.015)
+
+            cap.release()
         except Exception as e:
             self.connection_error = str(e)
             self.connected_event.set()
@@ -291,11 +340,12 @@ def draw_hud(
 
 
 def main():
+    stream_url = sys.argv[1] if len(sys.argv) > 1 else STREAM_URL
     print("=" * 65)
     print("  IVGuard - YOLO26n Real-Time Object Tracking & Displacement Test")
     print("=" * 65)
     print(f"  Model:       {MODEL_PATH}")
-    print(f"  Camera:      {STREAM_URL}")
+    print(f"  Camera:      {stream_url}")
     print(f"  Tracker:     {TRACKER_CONFIG} (ByteTrack)")
     print(f"  Inference:   imgsz={INFERENCE_IMGSZ}")
     print(f"  Classes:     PIV (0), TUBE (1)")
@@ -337,9 +387,9 @@ def main():
     print(f"📊 Logging tracking telemetry to: {csv_file_path}")
 
     # 3. Start Zero-Latency Threaded Stream Reader
-    print(f"📡 Connecting to camera stream at {STREAM_URL} ...")
+    print(f"📡 Connecting to camera stream at {stream_url} ...")
     try:
-        stream_reader = ThreadedMJPEGReader(STREAM_URL).start()
+        stream_reader = ThreadedMJPEGReader(stream_url).start()
     except Exception as e:
         print(f"[ERROR] Camera connection error: {e}")
         csv_file.close()
