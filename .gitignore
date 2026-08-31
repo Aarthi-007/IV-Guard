@@ -1,0 +1,56 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Large Model Weights (Keep pretrained folder structure, ignore weight artifacts)
+models/pretrained/*.pt
+models/trained/**/*.pt
+models/trained/**/*.onnx
+models/trained/**/*.engine
+*.pt
+
+# Video Recordings (Exclude large raw/test video files)
+videos/raw/*
+videos/normal/*
+videos/movement/*
+videos/abnormal/*
+!videos/**/.gitkeep
+
+# Large Dataset Media (Allow data.yaml and metadata, exclude raw image/label dumps if needed)
+datasets/raw/*
+datasets/public/*
+datasets/processed/*
+datasets/ivguard/train/images/*
+datasets/ivguard/val/images/*
+datasets/ivguard/test/images/*
+!datasets/**/.gitkeep
+!datasets/**/data.yaml
+
+# Results & Output Artifacts
+results/detections/*
+results/training/*
+results/evaluation/*
+results/videos/*
+!results/**/.gitkeep
+
+# Temporary and Log files
+*.log
+*.tmp
+.DS_Store

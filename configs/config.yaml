@@ -1,0 +1,21 @@
+# IVGuard Configuration
+
+camera:
+  stream_url: "http://192.168.1.9:8080/video"
+  timeout_seconds: 10
+  chunk_size: 1024
+
+model:
+  pretrained_path: "models/pretrained/yolo26n.pt"
+  conf_threshold: 0.25
+  iou_threshold: 0.45
+
+tracking:
+  tracker_type: "bytetrack"
+
+analysis:
+  displacement_threshold: 0.15
+  sustained_window_frames: 30
+
+alerts:
+  warning_level: "human_assessment_recommended"
