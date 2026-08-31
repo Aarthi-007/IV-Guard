@@ -32,7 +32,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {/* Camera Status */}
         <div className="flex items-center gap-2">
           <span className="text-slate-500 font-medium">Camera</span>
-          <span className="flex items-center gap-1.5 font-semibold text-emerald-600">
+          <span className={`flex items-center gap-1.5 font-semibold ${cameraConnected ? 'text-emerald-600' : 'text-red-600'}`}>
             <span className={`h-2 w-2 rounded-full ${cameraConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
             {cameraConnected ? 'CONNECTED' : 'DISCONNECTED'}
           </span>

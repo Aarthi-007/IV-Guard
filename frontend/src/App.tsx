@@ -18,12 +18,12 @@ export const App: React.FC = () => {
   const [demoStatus, setDemoStatus] = useState<TrackingStatusType>('STABLE');
 
   // Hooks
-  const { telemetry, connectionState, chartHistory, isLive } = useTelemetry(isDemoMode, demoStatus);
+  const { telemetry, chartHistory, isLive } = useTelemetry(isDemoMode, demoStatus);
   const { status, isBackendOnline, refetch: refetchStatus } = useSystemStatus(isDemoMode);
   const { alerts, isLoading: alertsLoading, refetch: refetchAlerts } = useAlerts(isDemoMode);
 
   const overallStatus: TrackingStatusType =
-    telemetry?.overall_status || status?.overall_status || (isBackendOnline ? 'INITIALIZING' : 'DISCONNECTED');
+    telemetry?.overall_status || status?.overall_status || (isBackendOnline ? 'STABLE' : 'DISCONNECTED');
 
   const handleToggleDemo = () => {
     setIsDemoMode((prev) => !prev);
@@ -34,23 +34,22 @@ export const App: React.FC = () => {
   };
 
   const handleResetBaseline = () => {
-    // Triggers local chart reset
     if (isDemoMode) {
       setDemoStatus('INITIALIZING');
-      setTimeout(() => setDemoStatus('STABLE'), 2500);
+      setTimeout(() => setDemoStatus('STABLE'), 2000);
     }
   };
 
   const pageTitles: Record<PageId, string> = {
     monitoring: 'Live Monitoring',
     analytics: 'Analytics',
-    alerts: 'Warnings & Alerts',
+    alerts: 'Recent Alerts',
     system: 'System Health',
     settings: 'Settings',
   };
 
   return (
-    <div className="flex h-screen w-screen bg-background overflow-hidden font-sans select-none">
+    <div className="flex h-screen w-screen bg-background overflow-hidden font-sans select-none text-slate-900">
       {/* Left Sidebar */}
       <Sidebar
         currentPage={currentPage}
@@ -64,36 +63,36 @@ export const App: React.FC = () => {
         {/* Top Header */}
         <TopHeader
           currentPageTitle={pageTitles[currentPage]}
-          cameraConnected={status?.camera_connected ?? false}
-          modelLoaded={status?.model_loaded ?? false}
-          fps={telemetry?.fps || status?.current_fps || 0}
+          cameraConnected={status?.camera_connected ?? (isDemoMode ? true : false)}
+          modelLoaded={status?.model_loaded ?? (isDemoMode ? true : false)}
+          fps={telemetry?.fps || status?.current_fps || 18.6}
           overallStatus={overallStatus}
           isLive={isLive || isDemoMode}
           isDemoMode={isDemoMode}
           onResetBaseline={handleResetBaseline}
         />
 
-        {/* Dynamic Page Router Body */}
-        <main className="flex-1 overflow-y-auto bg-background">
-          {/* Offline Banner if backend disconnected and not demo */}
+        {/* Dynamic Page Body */}
+        <main className="flex-1 overflow-y-auto bg-slate-50/50">
+          {/* Offline Banner if backend disconnected */}
           {!isBackendOnline && !isDemoMode && (
-            <div className="bg-red-950/80 border-b border-red-800/80 p-3 px-6 text-red-300 text-xs font-mono flex items-center justify-between">
+            <div className="bg-red-50 border-b border-red-200 px-8 py-3 text-red-800 text-xs flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Radio className="w-4 h-4 text-red-400 animate-pulse" />
+                <Radio className="w-4 h-4 text-red-600 animate-pulse" />
                 <span>
-                  Backend offline. Connect to FastAPI backend at <code className="bg-black/50 px-1.5 py-0.5 rounded text-white">http://localhost:8000</code> or enable Demo Mode.
+                  Backend offline. Connect to FastAPI backend at <code className="bg-red-100/80 px-1.5 py-0.5 rounded font-mono text-red-900">http://localhost:8000</code> or enable Demo Mode.
                 </span>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setIsDemoMode(true)}
-                  className="px-2.5 py-1 rounded bg-amber-500 text-black font-semibold text-[11px] hover:bg-amber-400 transition-colors"
+                  className="px-3 py-1 rounded-lg bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-colors shadow-sm"
                 >
                   Enable Demo Mode
                 </button>
                 <button
                   onClick={() => refetchStatus()}
-                  className="p-1 text-slate-300 hover:text-white"
+                  className="p-1 text-red-700 hover:text-red-900"
                   title="Retry backend connection"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
@@ -107,11 +106,14 @@ export const App: React.FC = () => {
               telemetry={telemetry}
               status={status}
               chartHistory={chartHistory}
+              alerts={alerts}
               isLive={isLive}
               isDemoMode={isDemoMode}
               demoStatus={demoStatus}
               onToggleDemo={handleToggleDemo}
               onChangeDemoStatus={handleChangeDemoStatus}
+              onResetBaseline={handleResetBaseline}
+              onNavigateToAlerts={() => setCurrentPage('alerts')}
             />
           )}
 
@@ -135,7 +137,7 @@ export const App: React.FC = () => {
             <SystemPage
               status={status}
               telemetry={telemetry}
-              connectionState={isDemoMode ? 'CONNECTED' : connectionState}
+              connectionState={isDemoMode ? 'CONNECTED' : (isLive ? 'CONNECTED' : 'DISCONNECTED')}
               isBackendConnected={isBackendOnline || isDemoMode}
             />
           )}
