@@ -1,7 +1,7 @@
 /**
- * useSystemStatus Hook
- * Periodically polls /api/status to verify camera, model, backend health and FPS.
- */
+* useSystemStatus Hook
+* Periodically polls /api/status to verify camera, model, backend health and FPS.
+*/
 
 import { useState, useEffect, useCallback } from 'react';
 import { SystemStatusResponse } from '../types/ivguard';
