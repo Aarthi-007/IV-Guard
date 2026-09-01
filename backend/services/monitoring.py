@@ -200,6 +200,34 @@ class MonitoringService:
             overall_status=overall
         )
 
+    def generate_mjpeg_stream(self):
+        """Yields live multipart MJPEG stream containing the latest annotated HUD frames."""
+        import cv2
+        while self.is_running:
+            with self.lock:
+                frame = self.latest_annotated_frame.copy() if self.latest_annotated_frame is not None else None
+                is_connected = self.camera.is_connected
+                source_label = "Laptop Webcam" if self.camera.camera_source == "local" else "External Camera"
+                err_msg = self.camera.connection_error
+
+            if not is_connected or frame is None:
+                placeholder = np.zeros((480, 640, 3), dtype=np.uint8)
+                msg = err_msg or f"Connecting to {source_label}..."
+                if len(msg) > 40:
+                    msg = msg[:37] + "..."
+                cv2.putText(placeholder, f"Connecting to {source_label}...", (80, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(placeholder, msg, (80, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
+                _, jpeg = cv2.imencode('.jpg', placeholder)
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+                time.sleep(0.2)
+                continue
+
+            _, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+            time.sleep(0.033)
+
     def stop(self):
         """Stop processing loop and camera."""
         self.is_running = False

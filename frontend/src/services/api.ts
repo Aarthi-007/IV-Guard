@@ -54,6 +54,17 @@ export class ApiService {
     return res.json();
   }
 
+  /** Reset baseline reference coordinates and track calibration */
+  static async resetBaseline(): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE_URL}/api/reset-baseline`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+    }
+    return res.json();
+  }
+
   /** Get live MJPEG video stream URL */
   static getVideoFeedUrl(): string {
     return `${API_BASE_URL}/api/video-feed`;

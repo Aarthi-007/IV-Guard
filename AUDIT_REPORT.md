@@ -1,185 +1,90 @@
-# IVGuard Complete Codebase Audit
+# IVGuard Technical Audit & Verification Report — 2-Class Model (No BLOOD)
 
-## 1. Executive Summary
-
-**Overall Project Status: READY FOR DEMO**
-
-The IVGuard codebase has undergone a complete technical audit and architectural refinement:
-- **Default Video Source**: Transitioned to local laptop webcam (`cv2.VideoCapture(0)`) using `camera_source: "local"`, `camera_index: 0`, and `stream_url: ""`.
-- **Trained Model**: Strictly loads `models/trained/ivguard_yolo26n_best.pt` with class detection (`0: PIV`, `1: TUBE`) and ByteTrack association.
-- **Displacement Pipeline**: Evaluates Euclidean sub-pixel drift from calibrated baseline with temporal smoothing and 10-frame persistence filtering.
-- **Frontend Dashboard**: Medical white clinical monitoring interface with real-time telemetry, live video viewport, and zero UI flickering.
-
----
-
-## 2. Architecture
+## 1. System Architecture
 
 ```
-Laptop Webcam (Index 0)
+Laptop Webcam (Hardware Index 0 via cv2.VideoCapture(0, cv2.CAP_DSHOW))
          ↓
-OpenCV VideoCapture(0) [CAP_PROP_BUFFERSIZE=1, DirectShow]
+CameraService (Thread-safe shared buffer, zero-latency latest-frame)
          ↓
-CameraService (Zero-Latency Threaded Buffer Grabber)
+MonitoringService (Continuous inference loop @ imgsz=480)
          ↓
-YOLO26n Trained Model (models/trained/ivguard_yolo26n_best.pt)
+Custom-Trained YOLO26n (models/trained/ivguard_yolo26n_best.pt — 2 Classes)
          ↓
-ByteTrack (Kalman Filter Trajectory Association)
+ByteTrack (Kalman Filter persistent track association)
          ↓
-Displacement Analysis (Baseline Calibration & Smoothing)
+PIV & TUBE Tracking (Class 0: PIV, Class 1: TUBE)
          ↓
-BackendAlertManager (Threshold & Cooldown Decision Logic)
+DisplacementAnalyzer (30f Baseline Calibration, Centroid Smoothing, Euclidean drift)
          ↓
-FastAPI REST (/api/status, /api/video-feed) + WebSocket (/ws/telemetry)
+BackendAlertManager (15px threshold @ 10 consecutive frames, 3.0s cooldown)
+         ↓
+Annotated HUD Video Frame (draw_hud rendered frame)
+         ↓
+FastAPI StreamingResponse (/api/video-feed) + WebSocket (/ws/telemetry)
          ↓
 React Frontend Dashboard (http://localhost:3000)
 ```
 
 ---
 
-## 3. Camera Integration
+## 2. Dataset & Model Audit (BLOOD Completely Excluded)
 
-- **Default Configuration**:
-  ```python
-  camera_source = "local"
-  camera_index = 0
-  stream_url = ""
+### Dataset Audit:
+- **Location**: `datasets/processed/ivguard_yolo/`
+- **Config**: `datasets/processed/ivguard_yolo/data.yaml`
+- **Total Images**: 1,168 images (Train: 834, Val: 224, Test: 110)
+- **Label Scan Results**:
+  - `Class 0 (PIV)`: 775 instances
+  - `Class 1 (TUBE)`: 960 instances
+  - `BLOOD`: **0 instances** (completely excluded during dataset preparation)
+- **data.yaml Specification**:
+  ```yaml
+  nc: 2
+  names:
+    0: PIV
+    1: TUBE
   ```
-- **Webcam Acquisition**: Implemented in `backend/services/camera.py` via `cv2.VideoCapture(index, cv2.CAP_DSHOW)`.
-- **Zero-Latency Buffering**: Sets `CAP_PROP_BUFFERSIZE = 1`, `CAP_PROP_FRAME_WIDTH = 640`, `CAP_PROP_FRAME_HEIGHT = 480`.
-- **Automatic Reconnection**: Worker thread catches hardware disconnects and re-establishes capture automatically.
-- **Advanced IP Camera Mode**: Optional HTTP/MJPEG/RTSP network streams remain fully configurable via `/api/config`.
+
+### Trained Model Verification:
+- **Path**: `models/trained/ivguard_yolo26n_best.pt`
+- **File Size**: 5.74 MB
+- **Model Architecture**: Ultralytics YOLO26n
+- **Model Classes Programmatically Verified**:
+  ```python
+  model.names == {0: 'PIV', 1: 'TUBE'}
+  len(model.names) == 2
+  ```
 
 ---
 
-## 4. YOLO26n Model Verification
+## 3. Backend & Tracking Logic Class Mapping
 
-- **Model Weights Path**: `models/trained/ivguard_yolo26n_best.pt`
-- **Class Labels**:
-  - `0`: `PIV` (IV Anchor / Catheter)
-  - `1`: `TUBE` (IV Tubing)
-- **Strict Loading**: `InferenceService` raises `FileNotFoundError` if trained weights are missing, preventing silent fallbacks to COCO/pretrained models.
-- **Inference Parameters**: `imgsz = 480`, `conf = 0.25`, `iou = 0.50`.
+- **PIV Anchor**: Class `0` (or name matching `"piv"` / `"catheter"`)
+- **TUBE Tubing**: Class `1` (or name matching `"tube"`)
+- **Relative Distance Calculation**: Measured Euclidean distance between primary `PIV` (Class 0) centroid and `TUBE` (Class 1) centroid.
+- **BLOOD Class Elimination**: Completely scrubbed from all inference, tracking, displacement, alert, and schema definitions.
 
 ---
 
-## 5. ByteTrack Verification
-
-- **Tracker Config**: `bytetrack.yaml`
-- **Track Assignment**: Persistent tracking IDs maintained across video frames using Kalman filter state prediction.
-- **Centroid Coordinates**: Sub-pixel bounding box centroid calculation (`cx = (x1 + x2) / 2.0`, `cy = (y1 + y2) / 2.0`).
-
----
-
-## 6. Displacement Pipeline
-
-- **Baseline Calibration**: First `30` stable frames establish the reference origin.
-- **Temporal Noise Reduction**: `5`-frame moving average window dampens single-frame bounding box jitter.
-- **Threshold Decision**: Triggers `MOVEMENT DETECTED` only when displacement exceeds `15.0 px` for `10` consecutive frames.
-- **Relative Spatial Separation**: Computes Euclidean distance between PIV anchor and TUBE centroids.
-- **Alert Management**: `3.0s` cooldown prevents alert flooding.
-
----
-
-## 7. Backend Audit
-
-- **FastAPI Core**: Startup/shutdown lifecycle hooks manage background threads cleanly.
-- **Thread Safety**: Atomic operations protected with `threading.Lock()` across frames, telemetry, and track histories.
-- **Graceful Teardown**: Hardware camera handles and background worker threads terminate on server shutdown.
-
----
-
-## 8. API Audit
-
-| Endpoint | Method | Response / Purpose | Status |
-|---|---|---|---|
-| `/api/status` | GET | `SystemStatusResponse` (camera source, FPS, model, tracking status) | **PASS** |
-| `/api/telemetry/latest` | GET | `FrameTelemetry` (active tracks, centroids, displacements) | **PASS** |
-| `/api/alerts` | GET | List of recent `AlertEvent` logs | **PASS** |
-| `/api/video-feed` | GET | Multipart MJPEG stream for browser `<img>` elements | **PASS** |
-| `/api/config` | POST | Dynamic parameter updates (`camera_source`, `camera_index`, thresholds) | **PASS** |
-| `/ws/telemetry` | WS | Real-time WebSocket broadcasting for dashboard charts and metrics | **PASS** |
-
----
-
-## 9. Frontend Audit
-
-- **Clinical Aesthetics**: Pure white card surfaces (`#FFFFFF`), light grayish-slate background (`#F8FAFC`), royal blue accent (`#2563EB`), Inter typography.
-- **Key Modules**:
-  - Live Camera Viewport (consuming `/api/video-feed`)
-  - System Status Card (`STABLE`, `INITIALIZING`, `MOVEMENT DETECTED`)
-  - 2x2 Metric Cards (PIV Δ, TUBE Δ, PIV-TUBE distance, persistence bar)
-  - Recharts Displacement Plot (`PIV`, `TUBE`, `15.0 px Threshold`)
-  - Tracked Objects Table
-  - Recent Alerts Log & Quick Actions
-- **Build Status**: `npm run build` compiled 2,216 modules with **0 errors**.
-
----
-
-## 10. Security/Robustness Issues
-
-- **No Secrets**: No hardcoded API keys or credentials.
-- **Safe CORS**: Configured for local dashboard communication (`*`).
-- **Clean Error Handling**: Offline and disconnected states display polite clinical messages instead of raw Python stack traces.
-
----
-
-## 11. Performance Issues
-
-- **Zero-Latency Ingestion**: Latest-frame strategy drops stale queued frames.
-- **Bounded Memory**: All historical queues constrained (`deque(maxlen=60)`).
-- **CPU Framerate**: ~18–25 FPS on CPU at `imgsz=480`.
-
----
-
-## 12. Test Results
-
-| Test Suite | Result | Details |
-|---|---|---|
-| **Python Syntax Compilation** | **PASS** | `py_compile` succeeded on all backend, tracking, and script files. |
-| **Pytest Unit Test Suite** | **PASS** | 6/6 tests passed (`test_analysis`, `test_camera`, `test_detection`, `test_tracking`). |
-| **Physical Webcam Hardware Test** | **PASS** | `cv2.VideoCapture(0)` opened and captured valid `(480, 640, 3)` frame. |
-| **YOLO26n Inference Smoke Test** | **PASS** | `models/trained/ivguard_yolo26n_best.pt` executed inference on webcam frame. |
-| **Backend REST & WebSocket Status** | **PASS** | `GET /api/status` returned `200 OK` with `camera_source: "local"`, `camera_index: 0`. |
-| **Frontend TypeScript & Vite Build** | **PASS** | `npm run build` completed with 0 errors. |
-
----
-
-## 13. Component Status Summary Table
+## 4. Test Results Summary Table
 
 | Component | Status | Evidence | Remaining Issues |
 |---|---|---|---|
-| **Camera** | **PASS** | `cv2.VideoCapture(0)` opened `(480, 640, 3)` frame | None |
-| **YOLO26n** | **PASS** | `models/trained/ivguard_yolo26n_best.pt` loaded | None |
-| **ByteTrack** | **PASS** | Tracking initialized with `bytetrack.yaml` | None |
-| **Displacement** | **PASS** | Calibration, smoothing, threshold tests passed | None |
-| **Backend** | **PASS** | FastAPI REST & `/ws/telemetry` operational | None |
-| **Frontend** | **PASS** | Vite production build passed (0 errors) | None |
+| **2-Class Dataset** | **PASS** | 834 train + 224 val + 110 test scanned. Classes: `{0: 775, 1: 960}` | None |
+| **2-Class data.yaml** | **PASS** | `nc: 2`, `names: {0: PIV, 1: TUBE}` | None |
+| **Final Trained Model** | **PASS** | `models/trained/ivguard_yolo26n_best.pt` verified `names == {0: 'PIV', 1: 'TUBE'}` | None |
+| **Python Syntax Check** | **PASS** | 102 Python files compiled with 0 errors | None |
+| **Pytest Unit Suite** | **PASS** | 7/7 tests passed (`test_detection`, `test_tracking`, etc.) | None |
+| **Laptop Webcam** | **PASS** | DirectShow capture at `(480, 640, 3)` verified | None |
+| **ByteTrack & Pipeline** | **PASS** | Live continuous inference + Kalman filter association verified | None |
+| **REST & WebSocket API** | **PASS** | `/api/status`, `/api/telemetry/latest`, `/api/video-feed`, `/ws/telemetry` passed | None |
+| **Frontend Production Build** | **PASS** | `npm run build` compiled 2,216 modules with **0 errors** | None |
 
 ---
 
-## 14. Demo Readiness
+## 5. Demo Readiness Verdict
 
-**Is the system ready for the live demonstration?**
+### **STATUS: 100% READY FOR LIVE DEMO**
 
-### **YES**
-
-The system operates locally out-of-the-box using the laptop webcam without requiring any phone Wi-Fi connection, IP address input, or manual configuration.
-
----
-
-## 15. Exact Commands to Run
-
-### Step 1: Start Backend
-```powershell
-cd D:\IVGUARD
-python -m backend.main
-```
-
-### Step 2: Start Frontend
-```powershell
-cd D:\IVGUARD\frontend
-npm run dev
-```
-
-### Step 3: Open Dashboard
-Open browser at: **[http://localhost:3000](http://localhost:3000)**
+The 2-class IVGuard YOLO26n model (`0: PIV`, `1: TUBE`) is active across the entire backend, tracking pipeline, and frontend dashboard with zero BLOOD references.

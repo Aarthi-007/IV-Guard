@@ -58,9 +58,16 @@ async def get_video_feed(service=Depends(get_monitoring_service)):
     Usage: <img src="http://localhost:8000/api/video-feed" />
     """
     return StreamingResponse(
-        service.camera.generate_mjpeg_stream(get_annotated_frame_fn=service.get_annotated_frame),
+        service.generate_mjpeg_stream(),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+@router.post("/reset-baseline")
+async def reset_baseline(service=Depends(get_monitoring_service)):
+    """Reset reference baseline calibration for all tracked objects."""
+    service.analyzer.reset()
+    return {"status": "success", "message": "Baseline calibration reset to INITIALIZING"}
 
 
 @router.post("/config", response_model=dict)

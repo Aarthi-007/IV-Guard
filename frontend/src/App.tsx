@@ -9,6 +9,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { useTelemetry } from './hooks/useTelemetry';
 import { useSystemStatus } from './hooks/useSystemStatus';
 import { useAlerts } from './hooks/useAlerts';
+import { ApiService } from './services/api';
 import { TrackingStatusType } from './types/ivguard';
 import { Radio, RefreshCw } from 'lucide-react';
 
@@ -37,6 +38,8 @@ export const App: React.FC = () => {
     if (isDemoMode) {
       setDemoStatus('INITIALIZING');
       setTimeout(() => setDemoStatus('STABLE'), 2000);
+    } else {
+      ApiService.resetBaseline().catch(console.error);
     }
   };
 

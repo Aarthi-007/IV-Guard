@@ -40,12 +40,26 @@ class CameraService:
         self._current_response: Optional[requests.Response] = None
         self._config_changed = threading.Event()
 
+    def _normalize_stream_url(self, url: str) -> str:
+        """Ensure IP Webcam URLs point to the /video MJPEG stream instead of the HTML landing page."""
+        clean_url = str(url).strip()
+        if not clean_url:
+            return clean_url
+        if clean_url.startswith("http://") or clean_url.startswith("https://"):
+            if clean_url.endswith(":8080") or clean_url.endswith(":8080/"):
+                clean_url = clean_url.rstrip("/") + "/video"
+            elif not any(clean_url.endswith(ext) for ext in ["/video", "/mjpeg", "/shot.jpg", ".m3u8", ".mjpeg", "/feed"]):
+                if ":8080" in clean_url and not clean_url.endswith("/video"):
+                    clean_url = clean_url.rstrip("/") + "/video"
+        return clean_url
+
     def set_camera_config(self, camera_source: str, camera_index: int = 0, stream_url: str = ""):
         """Dynamically update camera source (local vs ip_camera) and trigger instant reconnection."""
+        normalized_url = self._normalize_stream_url(stream_url)
         with self.lock:
             self.camera_source = str(camera_source).strip().lower()
             self.camera_index = int(camera_index)
-            self.stream_url = str(stream_url).strip()
+            self.stream_url = normalized_url
             self.is_connected = False
             self.connection_error = "Switching camera source..."
 
@@ -145,11 +159,12 @@ class CameraService:
 
     def _stream_http_mjpeg(self, url: str):
         """Optional HTTP MJPEG network stream reader for external cameras."""
+        target_url = self._normalize_stream_url(url)
         bytes_buffer = b""
         session = requests.Session()
         try:
-            print(f"[CameraService] Connecting to IP Camera stream: {url} ...")
-            response = session.get(url, stream=True, timeout=settings.camera_timeout)
+            print(f"[CameraService] Connecting to IP Camera stream: {target_url} ...")
+            response = session.get(target_url, stream=True, timeout=settings.camera_timeout)
             self._current_response = response
 
             if response.status_code != 200:
@@ -170,29 +185,29 @@ class CameraService:
 
                 bytes_buffer += chunk
 
-                # Robust JPEG delimiter extractor
-                last_frame_bytes = None
+                # Robust JPEG frame extraction
                 while True:
                     start_idx = bytes_buffer.find(b"\xff\xd8")
                     if start_idx == -1:
                         bytes_buffer = b""
                         break
-
-                    if start_idx > 0:
-                        bytes_buffer = bytes_buffer[start_idx:]
-
-                    end_idx = bytes_buffer.find(b"\xff\xd9")
-                    if end_idx != -1:
-                        last_frame_bytes = bytes_buffer[: end_idx + 2]
-                        bytes_buffer = bytes_buffer[end_idx + 2 :]
-                    else:
+                    end_idx = bytes_buffer.find(b"\xff\xd9", start_idx)
+                    if end_idx == -1:
+                        if start_idx > 0:
+                            bytes_buffer = bytes_buffer[start_idx:]
                         break
 
-                if last_frame_bytes is not None:
-                    frame = cv2.imdecode(np.frombuffer(last_frame_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    jpg_data = bytes_buffer[start_idx : end_idx + 2]
+                    bytes_buffer = bytes_buffer[end_idx + 2 :]
+
+                    frame = cv2.imdecode(np.frombuffer(jpg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
                     if frame is not None:
+                        if frame.shape[0] > 720:
+                            frame = cv2.resize(frame, (640, 480))
                         with self.lock:
                             self.latest_frame = frame
+                            self.is_connected = True
+                            self.connection_error = None
                         self.new_frame_event.set()
 
                 if len(bytes_buffer) > 100000:
@@ -211,12 +226,17 @@ class CameraService:
             self._current_response = None
 
     def get_latest_frame(self, timeout: float = 1.0) -> Tuple[bool, Optional[np.ndarray]]:
-        """Retrieve the newest available frame without queue buildup."""
+        """Retrieve the newest available frame in a thread-safe manner."""
+        with self.lock:
+            if self.latest_frame is not None and self.is_connected:
+                return True, self.latest_frame.copy()
         if self.new_frame_event.wait(timeout=timeout):
-            self.new_frame_event.clear()
             with self.lock:
                 if self.latest_frame is not None:
                     return True, self.latest_frame.copy()
+        with self.lock:
+            if self.latest_frame is not None:
+                return True, self.latest_frame.copy()
         return False, None
 
     def generate_mjpeg_stream(self, get_annotated_frame_fn=None) -> Generator[bytes, None, None]:

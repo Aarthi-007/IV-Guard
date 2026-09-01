@@ -136,8 +136,8 @@ class DisplacementAnalyzer:
             avg_y = sum(p[2] for p in recent_pts) / len(recent_pts)
             track.smoothed_center = (avg_x, avg_y)
 
-            # Check if this object is a PIV (Anchor)
-            if "piv" in obj.class_name.lower() or "catheter" in obj.class_name.lower() or obj.class_id == 0 or obj.class_id == 1:
+            # Check if this object is a PIV (Anchor: Class 0)
+            if "piv" in obj.class_name.lower() or "catheter" in obj.class_name.lower() or obj.class_id == 0:
                 piv_positions[tid] = track.smoothed_center
                 if self.primary_piv_track_id is None or self.primary_piv_track_id == tid:
                     self.primary_piv_track_id = tid
@@ -185,10 +185,11 @@ class DisplacementAnalyzer:
 
         # 3. Calculate Relative PIV-TUBE Distance
         anchor_piv_pos = piv_positions.get(self.primary_piv_track_id) if self.primary_piv_track_id else None
-        
+
         for tid in seen_track_ids:
             track = self.tracks[tid]
-            if "tube" in track.class_name.lower() or track.class_id == 2 or track.class_id == 1:
+            # Check if this object is a TUBE (Tubing: Class 1)
+            if "tube" in track.class_name.lower() or track.class_id == 1:
                 if anchor_piv_pos is not None and track.smoothed_center is not None:
                     rx = track.smoothed_center[0] - anchor_piv_pos[0]
                     ry = track.smoothed_center[1] - anchor_piv_pos[1]

@@ -159,8 +159,8 @@ export const SettingsPage: React.FC = () => {
                 placeholder="http://192.168.1.X:8080/video"
                 className="w-full bg-slate-50 border border-slate-200 focus:border-blue-600 rounded-xl px-4 py-2.5 text-xs text-slate-900 outline-none transition-colors font-mono"
               />
-              <span className="text-[11px] text-slate-400 block">
-                Enter the HTTP/RTSP endpoint of the external camera.
+              <span className="text-[11px] text-slate-500 block">
+                For Android IP Webcam apps, use the video stream endpoint: <strong className="text-blue-600 font-mono">http://192.168.1.9:8080/video</strong> (must end with <code className="font-mono text-slate-800 font-semibold">/video</code>).
               </span>
             </div>
           )}

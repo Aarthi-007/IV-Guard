@@ -9,6 +9,8 @@ interface LiveCameraFeedProps {
   isBackendConnected: boolean;
   isDemoMode: boolean;
   fps: number;
+  cameraSource?: string;
+  streamUrl?: string;
 }
 
 export const LiveCameraFeed: React.FC<LiveCameraFeedProps> = ({
@@ -16,6 +18,8 @@ export const LiveCameraFeed: React.FC<LiveCameraFeedProps> = ({
   isBackendConnected,
   isDemoMode,
   fps,
+  cameraSource,
+  streamUrl,
 }) => {
   const [imgKey, setImgKey] = useState(0);
   const videoFeedUrl = ApiService.getVideoFeedUrl();
@@ -116,7 +120,9 @@ export const LiveCameraFeed: React.FC<LiveCameraFeedProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 pt-3 border-t border-slate-100 text-xs text-slate-500">
         <div className="flex items-center gap-2">
           <Camera className="w-4 h-4 text-slate-400 shrink-0" />
-          <span className="font-medium text-slate-700 truncate">Laptop Webcam (0)</span>
+          <span className="font-medium text-slate-700 truncate">
+            {cameraSource === 'ip_camera' ? 'IP Camera (Phone)' : 'Laptop Webcam (0)'}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <Maximize2 className="w-4 h-4 text-slate-400 shrink-0" />

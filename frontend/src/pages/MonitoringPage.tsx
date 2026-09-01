@@ -51,6 +51,8 @@ export const MonitoringPage: React.FC<MonitoringPageProps> = ({
             isBackendConnected={isBackendOnline || isDemoMode}
             isDemoMode={isDemoMode}
             fps={fps}
+            cameraSource={status?.camera_source}
+            streamUrl={status?.stream_url}
           />
         </div>
 
