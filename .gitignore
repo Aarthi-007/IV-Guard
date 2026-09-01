@@ -25,6 +25,7 @@ models/trained/**/*.pt
 models/trained/**/*.onnx
 models/trained/**/*.engine
 *.pt
+!models/trained/ivguard_yolo26n_best.pt
 
 # Video Recordings (Exclude large raw/test video files)
 videos/raw/*
@@ -40,6 +41,14 @@ datasets/processed/*
 datasets/ivguard/train/images/*
 datasets/ivguard/val/images/*
 datasets/ivguard/test/images/*
+datasets/train/
+datasets/test/
+datasets/valid/
+datasets/IV/
+datasets/IV2/
+datasets/data.yaml
+datasets/*.zip
+datasets/*.txt
 !datasets/**/.gitkeep
 !datasets/**/data.yaml
 
@@ -48,6 +57,7 @@ results/detections/*
 results/training/*
 results/evaluation/*
 results/videos/*
+results/tracking/*
 !results/**/.gitkeep
 
 # Temporary and Log files

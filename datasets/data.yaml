@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['BLOOD', 'PIV', 'TUBE']
+
+roboflow:
+  workspace: civic-issue
+  project: peripheral-intravenous-access-4-wblbj
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/civic-issue/peripheral-intravenous-access-4-wblbj/dataset/1

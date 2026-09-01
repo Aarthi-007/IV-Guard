@@ -191,7 +191,7 @@ class ThreadedMJPEGReader:
 
 
 def get_class_color(class_name: str, class_id: int) -> Tuple[int, int, int]:
-    """Return distinct color for PIV vs TUBE."""
+    """Return distinct color for PIV (0) vs TUBE (1)."""
     c_lower = class_name.lower()
     if "piv" in c_lower or "catheter" in c_lower or class_id == 0:
         return COLOR_PIV
